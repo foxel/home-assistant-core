@@ -101,7 +101,7 @@ async def update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-def async_add_defaults(hass: HomeAssistant, entry: ConfigEntry):
+def async_add_defaults(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Populate default options."""
     host: str = entry.data[CONF_HOST]
     imported_options: dict = hass.data[DOMAIN].get(f"imported_options_{host}", {})

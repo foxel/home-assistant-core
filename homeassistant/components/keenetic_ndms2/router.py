@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from asyncio import Task
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 
 from ndms2_client import Client, ConnectionException, Device, TelnetConnection
@@ -48,24 +49,27 @@ class KeeneticRouter:
         self._connection: TelnetConnection | None = None
         self._client: Client | None = None
         self._cancel_periodic_update: Callable | None = None
-        self._available = False
-        self._progress = None
+        self._available: bool = False
+        self._progress: Task[None] | None = None
         self._tracked_interfaces = set(config_entry.options[CONF_INTERFACES])
 
     @property
-    def client(self):
+    def client(self) -> Client:
         """Read-only accessor for the client connection."""
+        if not self._client:
+            raise ValueError("Client not initialized")
+
         return self._client
 
     @property
-    def last_devices(self):
+    def last_devices(self) -> dict[str, Device]:
         """Read-only accessor for last_devices."""
         return self._last_devices
 
     @property
-    def host(self):
+    def host(self) -> str:
         """Return the host of this hub."""
-        return self.config_entry.data[CONF_HOST]
+        return str(self.config_entry.data[CONF_HOST])
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -79,46 +83,46 @@ class KeeneticRouter:
         )
 
     @property
-    def name(self):
+    def name(self) -> str:
         """Return the name of the hub."""
         return self._router_info.name if self._router_info else self.host
 
     @property
-    def model(self):
+    def model(self) -> str | None:
         """Return the model of the hub."""
         return self._router_info.model if self._router_info else None
 
     @property
-    def firmware(self):
+    def firmware(self) -> str | None:
         """Return the firmware of the hub."""
         return self._router_info.fw_version if self._router_info else None
 
     @property
-    def manufacturer(self):
+    def manufacturer(self) -> str | None:
         """Return the firmware of the hub."""
         return self._router_info.manufacturer if self._router_info else None
 
     @property
-    def available(self):
+    def available(self) -> bool:
         """Return if the hub is connected."""
         return self._available
 
     @property
-    def consider_home_interval(self):
+    def consider_home_interval(self) -> timedelta:
         """Config entry option defining number of seconds from last seen to away."""
         return timedelta(seconds=self.config_entry.options[CONF_CONSIDER_HOME])
 
     @property
-    def tracked_interfaces(self):
+    def tracked_interfaces(self) -> set[str]:
         """Tracked interfaces."""
         return self._tracked_interfaces
 
     @property
-    def signal_update(self):
+    def signal_update(self) -> str:
         """Event specific per router entry to signal updates."""
         return f"keenetic-update-{self.config_entry.entry_id}"
 
-    async def request_update(self):
+    async def request_update(self) -> None:
         """Request an update."""
         if self._progress is not None:
             await self._progress
@@ -129,12 +133,12 @@ class KeeneticRouter:
 
         self._progress = None
 
-    async def async_update(self):
+    async def async_update(self) -> None:
         """Update devices information."""
         await self.hass.async_add_executor_job(self._update_devices)
         async_dispatcher_send(self.hass, self.signal_update)
 
-    async def async_setup(self):
+    async def async_setup(self) -> None:
         """Set up the connection."""
         self._connection = TelnetConnection(
             self.config_entry.data[CONF_HOST],
@@ -149,7 +153,7 @@ class KeeneticRouter:
         except ConnectionException as error:
             raise ConfigEntryNotReady from error
 
-        async def async_update_data(_now):
+        async def async_update_data(_now: datetime) -> None:
             await self.request_update()
             self._cancel_periodic_update = async_call_later(
                 self.hass,
@@ -159,26 +163,27 @@ class KeeneticRouter:
 
         await async_update_data(dt_util.utcnow())
 
-    async def async_teardown(self):
+    async def async_teardown(self) -> None:
         """Teardown up the connection."""
         if self._cancel_periodic_update:
             self._cancel_periodic_update()
-        self._connection.disconnect()
+        if self._connection:
+            self._connection.disconnect()
 
-    def _update_router_info(self):
+    def _update_router_info(self) -> None:
         try:
-            self._router_info = self._client.get_router_info()
+            self._router_info = self.client.get_router_info()
             self._available = True
         except Exception:
             self._available = False
             raise
 
-    def _update_devices(self):
+    def _update_devices(self) -> None:
         """Get ARP from keenetic router."""
         _LOGGER.debug("Fetching devices from router")
 
         try:
-            _response = self._client.get_devices(
+            _response = self.client.get_devices(
                 try_hotspot=self.config_entry.options[CONF_TRY_HOTSPOT],
                 include_arp=self.config_entry.options[CONF_INCLUDE_ARP],
                 include_associated=self.config_entry.options[CONF_INCLUDE_ASSOCIATED],
@@ -189,7 +194,7 @@ class KeeneticRouter:
                 if dev.interface in self._tracked_interfaces
             }
             _LOGGER.debug("Successfully fetched data from router: %s", str(_response))
-            self._router_info = self._client.get_router_info()
+            self._router_info = self.client.get_router_info()
             self._available = True
 
         except ConnectionException:

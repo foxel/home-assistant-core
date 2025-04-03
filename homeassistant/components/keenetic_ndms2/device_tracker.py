@@ -34,7 +34,7 @@ async def async_setup_entry(
     tracked: set[str] = set()
 
     @callback
-    def update_from_router():
+    def update_from_router() -> None:
         """Update the status of devices."""
         update_items(router, async_add_entities, tracked)
 
@@ -69,7 +69,11 @@ async def async_setup_entry(
 
 
 @callback
-def update_items(router: KeeneticRouter, async_add_entities, tracked: set[str]):
+def update_items(
+    router: KeeneticRouter,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+    tracked: set[str],
+) -> None:
     """Update tracked device state from the hub."""
     new_tracked: list[KeeneticTracker] = []
     for mac, device in router.last_devices.items():
@@ -87,8 +91,8 @@ class KeeneticTracker(ScannerEntity):
 
     def __init__(self, device: Device, router: KeeneticRouter) -> None:
         """Initialize the tracked device."""
-        self._device = device
-        self._router = router
+        self._device: Device = device
+        self._router: KeeneticRouter = router
         self._last_seen = (
             dt_util.utcnow() if device.mac in router.last_devices else None
         )
@@ -105,7 +109,7 @@ class KeeneticTracker(ScannerEntity):
     @property
     def name(self) -> str:
         """Return the name of the device."""
-        return self._device.name or self._device.mac
+        return str(self._device.name or self._device.mac)
 
     @property
     def unique_id(self) -> str:
@@ -115,12 +119,12 @@ class KeeneticTracker(ScannerEntity):
     @property
     def ip_address(self) -> str | None:
         """Return the primary ip address of the device."""
-        return self._device.ip if self.is_connected else None
+        return str(self._device.ip) if self.is_connected else None
 
     @property
     def mac_address(self) -> str:
         """Return the mac address of the device."""
-        return self._device.mac
+        return str(self._device.mac)
 
     @property
     def available(self) -> bool:
@@ -128,7 +132,7 @@ class KeeneticTracker(ScannerEntity):
         return self._router.available
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, str] | None:
         """Return the device state attributes."""
         if self.is_connected:
             return {
